@@ -1,0 +1,29 @@
+name: Persian Web UI checks
+
+on:
+  push:
+    branches: ["main", "feature/persian-webui"]
+    paths:
+      - "webui/**"
+      - ".github/workflows/webui-check.yml"
+  pull_request:
+    paths:
+      - "webui/**"
+      - ".github/workflows/webui-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python source
+        run: python -m compileall -q webui
+      - name: Run dependency-light contract tests
+        run: python -m unittest discover -s webui/tests -v
