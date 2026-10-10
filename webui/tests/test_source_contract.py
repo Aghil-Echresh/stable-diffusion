@@ -41,13 +41,9 @@ class WebUISourceContractTests(unittest.TestCase):
 
     def test_requirements_include_web_and_inference_runtime(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        for dependency in ("fastapi", "uvicorn", "diffusers", "torch"):
+        for dependency in ("fastapi", "uvicorn", "diffusers", "python-dotenv"):
             with self.subTest(dependency=dependency):
-                if dependency == "torch":
-                    # PyTorch is deliberately installed according to the host's CUDA setup.
-                    self.assertIn("diffusers", requirements)
-                else:
-                    self.assertIn(dependency, requirements)
+                self.assertIn(dependency, requirements)
 
 
 if __name__ == "__main__":
