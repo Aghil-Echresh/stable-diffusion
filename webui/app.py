@@ -6,6 +6,7 @@ Set SD_MODEL_ID to a Diffusers-compatible model repository or local model path.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -14,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 import torch
 from diffusers import StableDiffusionPipeline
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -22,6 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env")
+logger = logging.getLogger(__name__)
 DATA_DIR = Path(os.getenv("SD_DATA_DIR", str(ROOT / "data")))
 OUTPUT_DIR = Path(os.getenv("SD_OUTPUT_DIR", str(DATA_DIR / "outputs")))
 HISTORY_FILE = DATA_DIR / "history.json"
@@ -67,8 +71,6 @@ def _get_pipeline() -> StableDiffusionPipeline:
             pipe = StableDiffusionPipeline.from_pretrained(
                 MODEL_ID,
                 torch_dtype=dtype,
-                safety_checker=None,
-                requires_safety_checker=False,
             )
             pipe = pipe.to(device)
             if device == "cuda":
@@ -132,7 +134,7 @@ def _run_generation(job_id: str, request: GenerateRequest) -> None:
             history.insert(0, item)
             _write_history(history)
     except Exception as exc:  # Keep the job state useful to the UI; details go to server logs.
-        app.logger.exception("Image generation failed for job %s", job_id) if hasattr(app, "logger") else None
+        logger.exception("Image generation failed for job %s", job_id)
         with _history_lock:
             _jobs[job_id].update({"status": "failed", "error": str(exc)[:500], "updated_at": _now()})
 
