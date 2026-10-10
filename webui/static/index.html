@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131d">
+  <meta name="description" content="پنل فارسی تولید تصویر با Stable Diffusion">
+  <title>استودیو تصویر | Stable Diffusion</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">✦</span><span><strong>استودیو تصویر</strong><small>قدرت‌گرفته از Stable Diffusion</small></span></a>
+    <div class="server-state"><i id="health-dot"></i><span id="health-text">در حال بررسی سرور…</span></div>
+  </header>
+  <main class="layout">
+    <section class="hero">
+      <div class="eyebrow">خلاقیت، از کلمات تا تصویر</div>
+      <h1>تصویر ذهنی‌ات را <span>بساز.</span></h1>
+      <p>توضیحت را بنویس، تنظیمات را انتخاب کن و نتیجه را در گالری نگه دار. پردازش روی سرور انجام می‌شود؛ با گوشی هم می‌توانی از پنل استفاده کنی.</p>
+    </section>
+    <section class="workspace">
+      <form id="generate-form" class="panel form-panel">
+        <div class="panel-heading"><div><span class="step">۰۱</span><h2>توصیف تصویر</h2></div><span class="hint">فارسی یا انگلیسی</span></div>
+        <label for="prompt">پرامپت اصلی</label>
+        <textarea id="prompt" required maxlength="2000" placeholder="مثلاً: خانه‌ای کوچک کنار دریا، نور طلایی غروب، نقاشی دیجیتال با جزئیات بالا…" rows="5"></textarea>
+        <label for="negative">مواردی که نمی‌خواهی (اختیاری)</label>
+        <textarea id="negative" maxlength="2000" placeholder="مثلاً: تاری، کیفیت پایین، اعوجاج" rows="2"></textarea>
+        <div class="settings">
+          <div><label for="steps">مراحل تولید <b id="steps-value">25</b></label><input id="steps" type="range" min="1" max="60" value="25"></div>
+          <div><label for="size">اندازه تصویر</label><select id="size"><option value="512">512 × 512</option><option value="640">640 × 640</option><option value="768">768 × 768</option></select></div>
+          <div><label for="seed">Seed (اختیاری)</label><input id="seed" type="number" min="0" max="4294967295" placeholder="تصادفی"></div>
+        </div>
+        <button class="primary" id="generate-button" type="submit"><span>✦</span> تولید تصویر <span class="button-arrow">←</span></button>
+        <p class="form-note">تولید تصویر به توان پردازشی سرور نیاز دارد. بار اول ممکن است دانلود مدل زمان ببرد.</p>
+      </form>
+      <section class="panel preview-panel">
+        <div class="panel-heading"><div><span class="step">۰۲</span><h2>پیش‌نمایش</h2></div><span id="job-badge" class="badge">آماده</span></div>
+        <div class="preview" id="preview">
+          <div class="preview-empty"><div class="sparkle">✧</div><strong>اینجا تصویرت ظاهر می‌شود</strong><span>یک پرامپت بنویس و روی تولید تصویر بزن.</span></div>
+        </div>
+        <div class="job-info"><span id="status-message">منتظر پرامپت شما</span><span id="elapsed"></span></div>
+        <div id="error-box" class="error-box" hidden></div>
+        <a id="download-link" class="secondary" hidden download>دانلود تصویر <span>↙</span></a>
+      </section>
+    </section>
+    <section class="gallery-section">
+      <div class="section-heading"><div><div class="eyebrow">آرشیو شخصی</div><h2>گالری تصاویر</h2><p>تصاویر تولیدشده و پرامپت‌های قبلی‌ات در این بخش ذخیره می‌شوند.</p></div><button id="refresh-gallery" class="text-button" type="button">به‌روزرسانی ↻</button></div>
+      <div id="gallery" class="gallery"><div class="gallery-empty">هنوز تصویری ثبت نشده است.</div></div>
+    </section>
+    <footer><span>Stable Diffusion Web Studio</span><span>رابط فارسی · طراحی واکنش‌گرا</span></footer>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let pollTimer = null;
+    let startedAt = 0;
+    $("steps").addEventListener("input", () => $("steps-value").textContent = $("steps").value);
+    async function api(url, options) {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        let message = "درخواست ناموفق بود";
+        try { const data = await response.json(); message = data.detail || message; } catch (_) {}
+        throw new Error(message);
+      }
+      return response.json();
+    }
+    async function checkHealth() {
+      try {
+        const data = await api("/api/health");
+        $("health-dot").classList.add("online");
+        $("health-text").textContent = data.device === "cuda" ? "سرور آماده · GPU" : "سرور متصل · CPU";
+      } catch (_) {
+        $("health-dot").classList.remove("online");
+        $("health-text").textContent = "اتصال به سرور برقرار نیست";
+      }
+    }
+    function showStatus(status, message) {
+      $("job-badge").textContent = message;
+      $("status-message").textContent = message;
+      $("job-badge").className = "badge " + status;
+    }
+    async function pollJob(id) {
+      try {
+        const job = await api("/api/jobs/" + encodeURIComponent(id));
+        const messages = {queued:"در صف", loading:"در حال آماده‌سازی مدل", generating:"در حال تولید تصویر", completed:"تکمیل شد", failed:"خطا"};
+        showStatus(job.status, messages[job.status] || job.status);
+        if (startedAt) $("elapsed").textContent = Math.round((Date.now() - startedAt) / 1000) + " ثانیه";
+        if (job.status === "completed") {
+          clearInterval(pollTimer);
+          $("preview").innerHTML = '<img class="result-image" alt="تصویر تولیدشده" src="' + job.image_url + '?v=' + Date.now() + '">';
+          $("download-link").href = job.image_url;
+          $("download-link").hidden = false;
+          $("generate-button").disabled = false;
+          $("generate-button").innerHTML = '<span>✦</span> تولید تصویر <span class="button-arrow">←</span>';
+          $("error-box").hidden = true;
+          loadGallery();
+        } else if (job.status === "failed") {
+          clearInterval(pollTimer);
+          $("error-box").textContent = "تولید انجام نشد: " + (job.error || "خطای نامشخص");
+          $("error-box").hidden = false;
+          $("generate-button").disabled = false;
+          $("generate-button").innerHTML = '<span>✦</span> تلاش دوباره <span class="button-arrow">←</span>';
+        }
+      } catch (error) {
+        clearInterval(pollTimer);
+        $("error-box").textContent = error.message;
+        $("error-box").hidden = false;
+        $("generate-button").disabled = false;
+      }
+    }
+    $("generate-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      $("error-box").hidden = true;
+      $("download-link").hidden = true;
+      $("preview").innerHTML = '<div class="loading-state"><div class="loader"></div><strong>در حال آماده‌سازی درخواست…</strong><span>این صفحه را باز نگه دار.</span></div>';
+      $("generate-button").disabled = true;
+      $("generate-button").textContent = "در حال ثبت درخواست…";
+      startedAt = Date.now();
+      $("elapsed").textContent = "۰ ثانیه";
+      try {
+        const size = Number($("size").value);
+        const seedValue = $("seed").value.trim();
+        const data = await api("/api/generate", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({
+          prompt:$("prompt").value, negative_prompt:$("negative").value, steps:Number($("steps").value),
+          width:size, height:size, seed:seedValue === "" ? null : Number(seedValue)
+        })});
+        showStatus("queued", "در صف");
+        $("preview").innerHTML = '<div class="loading-state"><div class="loader"></div><strong>تصویر در راه است…</strong><span>مدل ممکن است در اولین اجرا بارگیری شود.</span></div>';
+        $("generate-button").innerHTML = "در حال تولید…";
+        pollTimer = setInterval(() => pollJob(data.id), 2000);
+        pollJob(data.id);
+      } catch (error) {
+        $("error-box").textContent = error.message;
+        $("error-box").hidden = false;
+        $("generate-button").disabled = false;
+        $("generate-button").innerHTML = '<span>✦</span> تلاش دوباره <span class="button-arrow">←</span>';
+      }
+    });
+    async function loadGallery() {
+      try {
+        const items = await api("/api/gallery");
+        if (!items.length) { $("gallery").innerHTML = '<div class="gallery-empty">هنوز تصویری ثبت نشده است.</div>'; return; }
+        $("gallery").innerHTML = items.map(item => '<article class="gallery-card"><a href="' + item.image_url + '" target="_blank" rel="noopener"><img loading="lazy" src="' + item.image_url + '" alt="تصویر گالری"></a><div class="gallery-card-body"><p></p><small>' + new Date(item.created_at).toLocaleString("fa-IR") + '</small><button type="button" class="reuse-prompt">استفاده دوباره از پرامپت ↶</button></div></article>').join("");
+        [...$("gallery").querySelectorAll(".gallery-card")].forEach((card, index) => {
+          card.querySelector("p").textContent = items[index].prompt;
+          card.querySelector("button").addEventListener("click", () => { $("prompt").value = items[index].prompt; window.scrollTo({top:0,behavior:"smooth"}); });
+        });
+      } catch (_) { $("gallery").innerHTML = '<div class="gallery-empty">بارگیری گالری ممکن نشد.</div>'; }
+    }
+    $("refresh-gallery").addEventListener("click", loadGallery);
+    checkHealth(); loadGallery();
+  </script>
+</body>
+</html>
