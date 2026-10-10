@@ -41,7 +41,7 @@ class WebUISourceContractTests(unittest.TestCase):
 
     def test_requirements_include_web_and_inference_runtime(self):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        for dependency in ("fastapi", "uvicorn", "diffusers", "python-dotenv"):
+        for dependency in ("fastapi", "uvicorn", "diffusers", "python-dotenv", "torch"):
             with self.subTest(dependency=dependency):
                 self.assertIn(dependency, requirements)
 
