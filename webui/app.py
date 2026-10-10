@@ -40,6 +40,7 @@ app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 
 _pipeline: StableDiffusionPipeline | None = None
 _pipeline_lock = threading.Lock()
+_generation_lock = threading.Lock()
 _history_lock = threading.Lock()
 _jobs: dict[str, dict[str, Any]] = {}
 
@@ -91,7 +92,7 @@ class GenerateRequest(BaseModel):
     seed: int | None = Field(default=None, ge=0, le=4_294_967_295)
 
 
-def _run_generation(job_id: str, request: GenerateRequest) -> None:
+def _run_generation_locked(job_id: str, request: GenerateRequest) -> None:
     with _history_lock:
         _jobs[job_id]["status"] = "loading"
         _jobs[job_id]["updated_at"] = _now()
@@ -137,6 +138,12 @@ def _run_generation(job_id: str, request: GenerateRequest) -> None:
         logger.exception("Image generation failed for job %s", job_id)
         with _history_lock:
             _jobs[job_id].update({"status": "failed", "error": str(exc)[:500], "updated_at": _now()})
+
+
+def _run_generation(job_id: str, request: GenerateRequest) -> None:
+    # Serialize inference so concurrent requests do not compete for GPU memory.
+    with _generation_lock:
+        _run_generation_locked(job_id, request)
 
 
 @app.get("/", include_in_schema=False)
