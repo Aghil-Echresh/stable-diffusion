@@ -29,6 +29,7 @@ python -m venv .venv
 source .venv/bin/activate
 # Windows PowerShell: .venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
+# First install PyTorch matching your server's CUDA/CPU setup from https://pytorch.org/get-started/locally/
 pip install -r webui/requirements.txt
 cp webui/.env.example webui/.env
 ```
@@ -40,6 +41,8 @@ uvicorn webui.app:app --host 0.0.0.0 --port 8000
 ```
 
 پنل را روی سرور با `http://127.0.0.1:8000` باز کن. برای استفاده از گوشی، گوشی و سرور باید به شبکهٔ قابل‌دسترسی مشترک متصل باشند و به‌جای localhost، IP یا دامنهٔ سرور را باز کنی. برای دسترسی عمومی، HTTPS و احراز هویت را پشت reverse proxy اضافه کن؛ این نسخه به‌صورت پیش‌فرض ورود کاربر ندارد و نباید بدون محافظت روی اینترنت عمومی منتشر شود.
+
+برای سرور GPU، نسخهٔ PyTorch را از نصب‌کنندهٔ رسمی متناسب با نسخهٔ CUDA انتخاب کن؛ نصب‌کنندهٔ عمومی ممکن است با درایور یا محیط سرور شما بهترین تطابق را نداشته باشد.
 
 ## API
 
